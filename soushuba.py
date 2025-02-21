@@ -155,7 +155,7 @@ if __name__ == '__main__':
         time.sleep(2)
         redirect_url2 = get_refresh_url(redirect_url)
         url = get_url(redirect_url2)
-        url= 'https://upq.asd6.sa5f6dff3f12.com'
+        #url= 'https://upq.asd6.sa5f6dff3f12.com'
         logger.info(f'{url}')
         client = SouShuBaClient(urlparse(url).hostname,
                                 os.environ.get('SOUSHUBA_USERNAME', "libesse"),
