@@ -149,21 +149,27 @@ class SouShuBaClient:
                 logger.warning(f'{self.username} post {x + 1}nd failed!')
 
 
+
+
 if __name__ == '__main__':
     try:
         redirect_url = get_refresh_url('http://' + os.environ.get('SOUSHUBA_HOSTNAME', 'www.soushu2025.com'))
         time.sleep(2)
         redirect_url2 = get_refresh_url(redirect_url)
         url = get_url(redirect_url2)
-        #url= 'https://upq.asd6.sa5f6dff3f12.com'
         logger.info(f'{url}')
-        client = SouShuBaClient(urlparse(url).hostname,
-                                os.environ.get('SOUSHUBA_USERNAME', "libesse"),
-                                os.environ.get('SOUSHUBA_PASSWORD', "yF9pnSBLH3wpnLd"))
-        client.login()
-        client.space()
-        credit = client.credit()
-        logger.info(f'{client.username} have {credit} coins!')
+
+        # Retrieve and parse credentials from environment variable
+        credentials = json.loads(os.environ.get('MULTI_CREDS', '[]'))
+
+        for creds in credentials:
+            client = SouShuBaClient(urlparse(url).hostname,
+                                    creds["username"],
+                                    creds["password"])
+            client.login()
+            client.space()
+            credit = client.credit()
+            logger.info(f'{client.username} have {credit} coins!')
     except Exception as e:
         logger.error(e)
         sys.exit(1)
