@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 import time
 import logging
-
+import json
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
