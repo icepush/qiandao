@@ -149,8 +149,6 @@ class SouShuBaClient:
                 logger.warning(f'{self.username} post {x + 1}nd failed!')
 
 
-
-
 if __name__ == '__main__':
     try:
         redirect_url = get_refresh_url('http://' + os.environ.get('SOUSHUBA_HOSTNAME', 'www.soushu2025.com'))
@@ -158,14 +156,13 @@ if __name__ == '__main__':
         redirect_url2 = get_refresh_url(redirect_url)
         url = get_url(redirect_url2)
         logger.info(f'{url}')
+        
+        credentials = json.loads(os.environ.get('MULTI_CREDS', '{"libesse":"yF9pnSBLH3wpnLd"}'))
 
-        # Retrieve and parse credentials from environment variable
-        credentials = json.loads(os.environ.get('MULTI_CREDS', '[]'))
-
-        for creds in credentials:
+        for username, password in credentials.items():
             client = SouShuBaClient(urlparse(url).hostname,
-                                    creds["username"],
-                                    creds["password"])
+                                    username,
+                                    password)
             client.login()
             client.space()
             credit = client.credit()
