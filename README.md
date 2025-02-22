@@ -11,3 +11,7 @@
 | SOUSHUBA_HOSTNAME | 搜书吧永久地址 | `www.soushu2030.com` |
 | SOUSHUBA_USERNAME | 搜书吧用户名   |                      |
 | SOUSHUBA_PASSWORD | 搜书吧密码     |                      |
+| MULTI_CREDS|多账号|[
+    {"username": "user1", "password": "pass1"},
+    {"username": "user2", "password": "pass2"}
+]|
