@@ -13,10 +13,13 @@ jobs:
       SOUSHUBA_HOSTNAME: ${{ secrets.SOUSHUBA_HOSTNAME }}
       SOUSHUBA_USERNAME: ${{ secrets.SOUSHUBA_USERNAME }}
       SOUSHUBA_PASSWORD: ${{ secrets.SOUSHUBA_PASSWORD }}
+      MULTI_CREDS: ${{ secrets.MULTI_CREDS }}
 
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
+        with:
+          ref: asd-454-patch-2
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
