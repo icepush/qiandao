@@ -76,19 +76,45 @@ class SouShuBaClient:
             "Content-Type": "application/x-www-form-urlencoded",
         }
         self.proxies = proxies
+        self.last_post_time = 0.0 # Track last successful post time across methods
+
+    def _wait_for_rate_limit(self, required_delay_seconds=61.0):
+        """Checks time since last post and waits if necessary."""
+        now = time.time()
+        time_since_last_post = now - self.last_post_time
+        if time_since_last_post < required_delay_seconds:
+            wait_needed = required_delay_seconds - time_since_last_post
+            logger.info(f"{self.username[0]}******{self.username[-1]}: Global rate limit: waiting {wait_needed:.1f} seconds before next post.")
+            time.sleep(wait_needed)
 
     def login_form_hash(self):
-        rst = self.session.get(f'https://{self.hostname}/member.php?mod=logging&action=login').text
-        loginhash = re.search(r'<div id="main_messaqge_(.+?)">', rst).group(1)
-        formhash = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst).group(1)
-        return loginhash, formhash
+        try:
+            rst = self.session.get(f'https://{self.hostname}/member.php?mod=logging&action=login').text
+            loginhash_match = re.search(r'<div id="main_messaqge_(.+?)">', rst)
+            formhash_match = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst)
+            
+            if loginhash_match and formhash_match:
+                loginhash = loginhash_match.group(1)
+                formhash = formhash_match.group(1)
+                return loginhash, formhash
+            else:
+                logger.error(f"Could not find loginhash or formhash on login page for {self.username[0]}******{self.username[-1]}. Page content might have changed or session issue.")
+                logger.debug(f"Login page content for {self.username[0]}******{self.username[-1]}: {rst[:500]}...") # Log partial content for debugging
+                return None # Indicate failure
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed when getting login hash/formhash for {self.username[0]}******{self.username[-1]}: {e}")
+            return None
 
     def login(self):
         """Login with username and password"""
-        loginhash, formhash = self.login_form_hash()
+        login_resp = self.login_form_hash()
+        if not login_resp:
+             logger.error(f"Failed to get login hash/formhash for {self.username[0]}******{self.username[-1]}")
+             raise ValueError("Login preparation failed.")
+        loginhash, formhash = login_resp
+
         login_url = f'https://{self.hostname}/member.php?mod=logging&action=login&loginsubmit=yes' \
                     f'&handlekey=register&loginhash={loginhash}&inajax=1'
-
 
         headers = copy(self._common_headers)
         headers["origin"] = f'https://{self.hostname}'
@@ -104,7 +130,7 @@ class SouShuBaClient:
 
         resp = self.session.post(login_url, proxies=self.proxies, data=payload, headers=headers)
         if resp.status_code == 200:
-            logger.info(f'Welcome {self.username}!')
+            logger.info(f'Welcome {self.username[0]}******{self.username[-1]}!')
         else:
             raise ValueError('Verify Failed! Check your username and password!')
 
@@ -117,25 +143,50 @@ class SouShuBaClient:
         cdata_content = root.text
 
         # 使用 BeautifulSoup 解析 CDATA 内容
-        cdata_soup = BeautifulSoup(cdata_content, features="lxml")
-        hcredit_2 = cdata_soup.find("span", id="hcredit_2").string
-
-        return hcredit_2
+        try:
+            cdata_soup = BeautifulSoup(cdata_content, features="lxml")
+            credit_span = cdata_soup.find("span", id="hcredit_2")
+            if credit_span and credit_span.string:
+                 hcredit_2 = credit_span.string
+                 return hcredit_2
+            else:
+                 logger.error(f"Could not find credit span 'hcredit_2' in response for {self.username[0]}******{self.username[-1]}. Session might be invalid.")
+                 logger.debug(f"Credit response CDATA for {self.username[0]}******{self.username[-1]}: {cdata_content[:500]}...")
+                 return None # Indicate failure
+        except Exception as e:
+            logger.error(f"Error parsing credit response for {self.username[0]}******{self.username[-1]}: {e}")
+            logger.debug(f"Original credit response text: {credit_rst[:500]}...")
+            return None # Indicate failure
 
     def space_form_hash(self):
-        rst = self.session.get(f'https://{self.hostname}/home.php').text
-        formhash = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst).group(1)
-        return formhash
+        try:
+            rst = self.session.get(f'https://{self.hostname}/home.php').text
+            match = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst)
+            if match:
+                return match.group(1)
+            else:
+                logger.error(f"Could not find space formhash on home.php for {self.username[0]}******{self.username[-1]}. Page content might have changed or session issue.")
+                logger.debug(f"Home page content for {self.username[0]}******{self.username[-1]}: {rst[:500]}...") # Log partial content
+                return None
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed when getting space formhash for {self.username[0]}******{self.username[-1]}: {e}")
+            return None
 
     def space(self):
-        formhash = self.space_form_hash()
-        space_url = f"https://{self.hostname}/home.php?mod=spacecp&ac=doing&handlekey=doing&inajax=1"
+        
 
+        space_url = f"https://{self.hostname}/home.php?mod=spacecp&ac=doing&handlekey=doing&inajax=1"
         headers = copy(self._common_headers)
         headers["origin"] = f'https://{self.hostname}'
         headers["referer"] = f'https://{self.hostname}/home.php'
 
         for x in range(5):
+            formhash = self.space_form_hash()
+            # Check if formhash was obtained
+            if not formhash:
+                logger.error(f"Skipping space post {x+1} for {self.username[0]}******{self.username[-1]} because formhash could not be retrieved.")
+                continue # Skip to the next iteration of the outer loop
+
             payload = {
                 "message": "开心赚银币 {0} 次".format(x + 1).encode("GBK"),
                 "addsubmit": "true",
@@ -143,12 +194,36 @@ class SouShuBaClient:
                 "referer": "home.php",
                 "formhash": formhash
             }
-            resp = self.session.post(space_url, proxies=self.proxies, data=payload, headers=headers)
-            if re.search("操作成功", resp.text):
-                logger.info(f'{self.username[0]}******{self.username[-1]} post {x + 1}nd successfully!')
-                time.sleep(120)
-            else:
-                logger.warning(f'{self.username[0]}******{self.username[-1]} post {x + 1}nd failed!')
+            
+            max_retries = 3
+            retry_count = 0
+            success = False
+            while retry_count < max_retries and not success:
+                # Wait before attempting the post
+                self._wait_for_rate_limit()
+
+                resp = self.session.post(space_url, proxies=self.proxies, data=payload, headers=headers)
+                if re.search("操作成功", resp.text):
+                    logger.info(f'{self.username[0]}******{self.username[-1]}: post {x + 1}nd successfully!')
+                    self.last_post_time = time.time() # Update last post time on success
+                    success = True
+                else:
+                    logger.warning(f'{self.username[0]}******{self.username[-1]}: post {x + 1}nd attempt {retry_count + 1} failed! Response: {resp.text}')
+                    retry_count += 1
+                    # Check for "操作太快" error
+                    wait_time_match = re.search(r"请等待 (\d+) 秒再试", resp.text)
+                    if wait_time_match:
+                        wait_seconds = int(wait_time_match.group(1)) + 1 # Add a small buffer
+                        logger.info(f"Rate limit hit. Waiting for {wait_seconds} seconds before retry.")
+                        time.sleep(wait_seconds)
+                    elif retry_count < max_retries:
+                        # General failure, wait a bit before generic retry
+                        time.sleep(5) 
+
+            if not success:
+                 logger.error(f"Failed to post space update {x+1} after {max_retries} attempts for user {self.username[0]}******{self.username[-1]}. Skipping this post.")
+                 # Decide if you want to 'continue' to the next x or 'break' the loop entirely
+                 continue # Move to the next iteration of the outer loop
 
     def get_tids(self):
         fids=[40,39,68]
@@ -159,9 +234,13 @@ class SouShuBaClient:
         headers["referer"] = f'https://{self.hostname}/forum.php'
 
         page_text=self.session.get(url=url,headers=headers).text
-       
+
         page_root=etree.HTML(page_text)
         page_need=page_root.xpath("//table[@id='threadlisttableid']")
+        # Add check for empty page_need
+        if not page_need:
+             logger.warning(f"Could not find threadlisttableid on page {url}")
+             return []
         pattern = re.compile('tid=(\d+)&amp')
         page_need_text=str(etree.tostring(page_need[0]))
         tid_list = pattern.findall(page_need_text)
@@ -171,6 +250,11 @@ class SouShuBaClient:
     def comment(self, tid):
 
         formhash = self.space_form_hash()
+        # Check if formhash was obtained
+        if not formhash:
+            logger.error(f"Cannot comment on TID {tid} for {self.username[0]}******{self.username[-1]} because formhash could not be retrieved.")
+            return -1 # Indicate failure
+
         message=['别的不说，楼主就是给力啊','谢谢楼主分享，祝搜书吧越办越好！','看了LZ的帖子，我只想说一句很好很强大！','太感谢了太感谢了太感谢了']
         commen=random.choice(message)
         commen_gbk = commen.encode('gbk')
@@ -192,11 +276,15 @@ class SouShuBaClient:
         headers["origin"] = f'https://{self.hostname}'
         headers["referer"] = f'https://{self.hostname}/forum.php?mod=viewthread&tid={tid}&extra='
         
+        # Wait before attempting the post
+        self._wait_for_rate_limit()
 
         comment_result=self.session.post(url=comment_url,headers=headers,data=comment_payload)
         # print(pinglun.text)
         if '发布成功' in comment_result.text :
-            logger.info(f'评论成功，此次评论的帖子tid为 {tid} ,评论的内容为 {commen} ,等待60s后再次评论')
+            #logger.info(f'评论成功，此次评论的帖子tid为 {tid} ,评论的内容为 {commen} ,等待60s后再次评论')
+            logger.info(f'{self.username[0]}******{self.username[-1]}: 评论成功{commen}') # Removed wait info here
+            self.last_post_time = time.time() # Update last post time on success
             return 0
         elif '回复限制' in comment_result.text:
             logger.warning('重复评论')
@@ -204,16 +292,80 @@ class SouShuBaClient:
             logger.warning('评论太快，等待60s')
 
         else:
-            logger.error(f'评论失败')
-            logger.error(f'错误代码：{comment_result.status_code}')
+            logger.error(f'{self.username[0]}******{self.username[-1]}:comments failed')
+            #logger.error(f'response：{comment_result.text}')
             
         return -1
     def comments(self):
-        tids=self.get_tids()
-        for i in range(3):
-            tid=tids[i]
-            self.comment(tid)
-            time.sleep(70)
+        successful_comments_count = 0
+        max_attempts_per_comment = 3 # Maximum attempts for a single comment tid
+        total_attempts = 0 # Prevent potential infinite loops overall
+        max_total_attempts = 15 # e.g., 3 comments * 5 attempts each
+
+        tids = [] # Initialize empty list
+
+        while successful_comments_count < 3 and total_attempts < max_total_attempts:
+            total_attempts += 1
+
+            # Fetch new TIDs if the list is empty or exhausted
+            if not tids:
+                logger.info("Fetching new TIDs for commenting...")
+                tids = self.get_tids()
+                # Shuffle to avoid always picking the same if retrying
+                random.shuffle(tids)
+                if not tids:
+                    logger.error("Failed to fetch any TIDs, cannot continue commenting.")
+                    break # Exit the main while loop if no TIDs can be fetched
+                logger.info(f"Fetched {len(tids)} TIDs.")
+
+            if not tids: # Double check after fetching
+                 logger.warning("No TIDs available to comment on.")
+                 time.sleep(60) # Wait before trying to fetch again
+                 continue # Skip to next iteration of while loop
+
+            tid_to_try = tids.pop(0) # Get the next TID from the list
+            tid_display = f"{tid_to_try[:2]}****{tid_to_try[-2:]}" if len(str(tid_to_try)) > 4 else str(tid_to_try)
+            logger.info(f"Attempting comment {successful_comments_count + 1}/3 on TID: {tid_display}")
+
+            attempt = 0
+            comment_succeeded = False
+            while attempt < max_attempts_per_comment and not comment_succeeded:
+                attempt += 1
+                result = self.comment(tid_to_try)
+                if result == 0:
+                    successful_comments_count += 1
+                    comment_succeeded = True
+                    logger.info(f"Successfully posted comment {successful_comments_count}/3.")
+                    # Wait after successful comment before the next one
+                    if successful_comments_count < 3:
+                         time.sleep(61) # Wait 61s as requested by logs previously
+                else:
+                    logger.warning(f"Attempt {attempt}/{max_attempts_per_comment} failed for TID {tid_display}. Retrying if possible...")
+                    # If it failed due to interval, wait longer before retry
+                    # Note: self.comment already logs specific reasons
+                    if attempt < max_attempts_per_comment:
+                        # Check the failure reason from the last comment attempt if possible 
+                        # (requires comment method to provide more info or check resp text here)
+                        # For now, assume most failures need the long wait
+                        logger.info(f"Waiting 61 seconds before retrying comment on TID {tid_display}...")
+                        time.sleep(61)
+                    else:
+                         logger.error(f"Failed to comment on TID {tid_display} after {max_attempts_per_comment} attempts.")
+
+            if not comment_succeeded and tids:
+                 # If failed on this TID, maybe try another one next time without long sleep yet
+                 logger.info("Trying next TID.")
+            elif not comment_succeeded and not tids:
+                 # If failed and no more TIDs, wait before fetching new ones
+                 logger.info("Failed comment and no more TIDs. Waiting before fetching new list.")
+                 time.sleep(60)
+
+
+        if successful_comments_count < 3:
+             logger.error(f"Could only complete {successful_comments_count} out of 3 required comments after {total_attempts} total attempts.")
+        else:
+             logger.info("Successfully completed 3 comments.")
+
 
 if __name__ == '__main__':
     try:
@@ -230,7 +382,11 @@ if __name__ == '__main__':
                                     username,
                                     password)
             client.login()
+            credit = client.credit()
+            logger.info(f'{client.username[0]}******{client.username[-1]} have {credit} coins!')
             client.space()
+            credit = client.credit()
+            logger.info(f'{client.username[0]}******{client.username[-1]} have {credit} coins!')
             client.comments()
             credit = client.credit()
             logger.info(f'{client.username[0]}******{client.username[-1]} have {credit} coins!')
