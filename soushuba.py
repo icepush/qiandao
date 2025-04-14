@@ -6,11 +6,13 @@ import os
 import re
 import sys
 from copy import copy
-
+import random
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
+from lxml import etree
+
 import time
 import logging
 import json
@@ -143,11 +145,75 @@ class SouShuBaClient:
             }
             resp = self.session.post(space_url, proxies=self.proxies, data=payload, headers=headers)
             if re.search("操作成功", resp.text):
-                logger.info(f'{self.username} post {x + 1}nd successfully!')
+                logger.info(f'{self.username[0]}******{self.username[-1]} post {x + 1}nd successfully!')
                 time.sleep(120)
             else:
-                logger.warning(f'{self.username} post {x + 1}nd failed!')
+                logger.warning(f'{self.username[0]}******{self.username[-1]} post {x + 1}nd failed!')
 
+    def get_tids(self):
+        fids=[40,39,68]
+        url=f'https://{self.hostname}/forum.php?mod=forumdisplay&fid={random.choice(fids)}&page=1'
+        # print(url)
+        headers = copy(self._common_headers)
+        headers["origin"] = f'https://{self.hostname}'
+        headers["referer"] = f'https://{self.hostname}/forum.php'
+
+        page_text=self.session.get(url=url,headers=headers).text
+       
+        page_root=etree.HTML(page_text)
+        page_need=page_root.xpath("//table[@id='threadlisttableid']")
+        pattern = re.compile('tid=(\d+)&amp')
+        page_need_text=str(etree.tostring(page_need[0]))
+        tid_list = pattern.findall(page_need_text)
+        tid_list_set = list(dict.fromkeys(tid_list))[10::]
+        return tid_list_set
+                
+    def comment(self, tid):
+
+        formhash = self.space_form_hash()
+        message=['别的不说，楼主就是给力啊','谢谢楼主分享，祝搜书吧越办越好！','看了LZ的帖子，我只想说一句很好很强大！','太感谢了太感谢了太感谢了']
+        commen=random.choice(message)
+        commen_gbk = commen.encode('gbk')
+        comment_payload = {
+                'formhash': formhash,
+                'handlekey': 'register',
+                'noticeauthor': '',
+                'noticetrimstr': '',
+                'noticeauthormsg': '',
+                'usesig': '1',
+                'subject': '',
+                'message': commen_gbk
+            }
+       # tid=random.choice(url_list)
+        
+        comment_url=f'https://{self.hostname}/forum.php?mod=post&infloat=yes&action=reply&fid=100&extra=&tid={tid}&replysubmit=yes&inajax=1'
+        
+        headers = copy(self._common_headers)
+        headers["origin"] = f'https://{self.hostname}'
+        headers["referer"] = f'https://{self.hostname}/forum.php?mod=viewthread&tid={tid}&extra='
+        
+
+        comment_result=self.session.post(url=comment_url,headers=headers,data=comment_payload)
+        # print(pinglun.text)
+        if '发布成功' in comment_result.text :
+            logger.info(f'评论成功，此次评论的帖子tid为 {tid} ,评论的内容为 {commen} ,等待60s后再次评论')
+            return 0
+        elif '回复限制' in comment_result.text:
+            logger.warning('重复评论')
+        elif '发布间隔' in comment_result.text:
+            logger.warning('评论太快，等待60s')
+
+        else:
+            logger.error(f'评论失败')
+            logger.error(f'错误代码：{comment_result.status_code}')
+            
+        return -1
+    def comments(self):
+        tids=self.get_tids()
+        for i in range(3):
+            tid=tids[i]
+            self.comment(tid)
+            time.sleep(70)
 
 if __name__ == '__main__':
     try:
@@ -165,8 +231,9 @@ if __name__ == '__main__':
                                     password)
             client.login()
             client.space()
+            client.comments()
             credit = client.credit()
-            logger.info(f'{client.username} have {credit} coins!')
+            logger.info(f'{client.username[0]}******{client.username[-1]} have {credit} coins!')
     except Exception as e:
         logger.error(e)
         sys.exit(1)
