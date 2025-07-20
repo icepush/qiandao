@@ -26,7 +26,7 @@ logger.addHandler(ch)
 
 def get_refresh_url(url: str):
     try:
-        response = requests.get(url)
+        response = requests.get(url, verify=False)
         if response.status_code != 403:
             response.raise_for_status()
 
@@ -47,7 +47,7 @@ def get_refresh_url(url: str):
         return None
 
 def get_url(url: str):
-    resp = requests.get(url)
+    resp = requests.get(url, verify=False)
     soup = BeautifulSoup(resp.content, 'html.parser')
     
     links = soup.find_all('a', href=True)
@@ -61,6 +61,7 @@ class SouShuBaClient:
     def __init__(self, hostname: str, username: str, password: str, questionid: str = '0', answer: str = None,
                  proxies: dict | None = None):
         self.session: requests.Session = requests.Session()
+        self.session.verify = False  # 禁用SSL证书验证
         self.hostname = hostname
         self.username = username
         self.password = password
@@ -77,10 +78,15 @@ class SouShuBaClient:
         self.proxies = proxies
 
     def login_form_hash(self):
-        rst = self.session.get(f'https://{self.hostname}/member.php?mod=logging&action=login').text
-        loginhash = re.search(r'<div id="main_messaqge_(.+?)">', rst).group(1)
-        formhash = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst).group(1)
-        return loginhash, formhash
+        try:
+            rst = self.session.get(f'https://{self.hostname}/member.php?mod=logging&action=login', verify=False).text
+            loginhash = re.search(r'<div id="main_messaqge_(.+?)">', rst).group(1)
+            formhash = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst).group(1)
+            return loginhash, formhash
+        except Exception as e:
+            logger.error(f"Request failed when getting login hash/formhash for {self.username}: {e}")
+            logger.error(f"Failed to get login hash/formhash for {self.username}")
+            raise ValueError("Login preparation failed.")
 
     def login(self):
         """Login with username and password"""
@@ -101,7 +107,7 @@ class SouShuBaClient:
             'answer': self.answer
         }
 
-        resp = self.session.post(login_url, proxies=self.proxies, data=payload, headers=headers)
+        resp = self.session.post(login_url, proxies=self.proxies, data=payload, headers=headers, verify=False)
         if resp.status_code == 200:
             logger.info(f'Welcome {self.username}!')
         else:
@@ -109,7 +115,7 @@ class SouShuBaClient:
 
     def credit(self):
         credit_url = f"https://{self.hostname}/home.php?mod=spacecp&ac=credit&showcredit=1&inajax=1&ajaxtarget=extcreditmenu_menu"
-        credit_rst = self.session.get(credit_url).text
+        credit_rst = self.session.get(credit_url, verify=False).text
 
         # 解析 XML，提取 CDATA
         root = ET.fromstring(str(credit_rst))
@@ -122,7 +128,7 @@ class SouShuBaClient:
         return hcredit_2
 
     def space_form_hash(self):
-        rst = self.session.get(f'https://{self.hostname}/home.php').text
+        rst = self.session.get(f'https://{self.hostname}/home.php', verify=False).text
         formhash = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst).group(1)
         return formhash
 
@@ -142,12 +148,17 @@ class SouShuBaClient:
                 "referer": "home.php",
                 "formhash": formhash
             }
-            resp = self.session.post(space_url, proxies=self.proxies, data=payload, headers=headers)
+            resp = self.session.post(space_url, proxies=self.proxies, data=payload, headers=headers, verify=False)
             if re.search("操作成功", resp.text):
                 logger.info(f'{self.username} post {x + 1}nd successfully!')
                 time.sleep(120)
             else:
                 logger.warning(f'{self.username} post {x + 1}nd failed!')
+
+    def comments(self):
+        """评论功能的占位方法，目前暂未实现"""
+        logger.info(f'{self.username} comments method called but not implemented yet.')
+        pass
 
 
 if __name__ == '__main__':

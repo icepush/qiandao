@@ -10,6 +10,7 @@ class DiscuzLogin:
 
     def __init__(self, hostname, username, password, questionid='0', answer=None, proxies=None):
         self.session = requests.session()
+        self.session.verify = False  # 禁用SSL证书验证
         self.hostname = hostname
         self.username = username
         self.password = password
@@ -24,7 +25,7 @@ class DiscuzLogin:
         user.login()
 
     def form_hash(self):
-        rst = self.session.get(f'https://{self.hostname}/member.php?mod=logging&action=login').text
+        rst = self.session.get(f'https://{self.hostname}/member.php?mod=logging&action=login', verify=False).text
         loginhash = re.search(r'<div id="main_messaqge_(.+?)">', rst).group(1)
         formhash = re.search(r'<input type="hidden" name="formhash" value="(.+?)" />', rst).group(1)
         return loginhash, formhash
@@ -42,7 +43,7 @@ class DiscuzLogin:
             'answer': self.answer,
             'cookietime': 2592000
         }
-        login_rst = self.session.post(login_url, proxies=self.proxies, data=form_data)
+        login_rst = self.session.post(login_url, proxies=self.proxies, data=form_data, verify=False)
         if self.session.cookies.get('xxzo_2132_auth'):
             print(f'Welcome {self.username}!')
         else:
