@@ -1,4 +1,4 @@
-name: Run soushuba qiandao
+name: Run soushuba qiandao (Concurrent)
 on:
   push:
   # Allows you to run this workflow manually from the Actions tab
@@ -18,12 +18,10 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
-        with:
-          ref: asd-454-patch-2
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - run: python soushuba.py
+      - run: python concurrent_soushuba.py
