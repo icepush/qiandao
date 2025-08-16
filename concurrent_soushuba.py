@@ -9,6 +9,9 @@ import sys
 import time
 from urllib.parse import urlparse
 import concurrent.futures
+import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # 假设 SouShuBaClient, get_refresh_url, get_url 在 soushuba 模块中
 # 如果它们在同一个文件中，需要相应调整导入
@@ -34,24 +37,26 @@ def process_user(hostname, username, password):
         initial_credit = client.credit()
         logger.info(f'{client.username[0]}******{client.username[-1]} Initial coins: {initial_credit}')
 
-        # Run space update and comments sequentially for this user
-        logger.info(f"Running space task for {client.username[0]}******{client.username[-1]}")
+        # Sequentially run space update and comments for this user
+        logger.info(f"Starting space task for {client.username[0]}******{client.username[-1]}")
         try:
             client.space()
+            logger.info(f"Space task completed for {client.username[0]}******{client.username[-1]}")
         except Exception as e:
             logger.error(f"Error in space task for user {username}: {e}", exc_info=True)
 
-        logger.info(f"Running comments task for {client.username[0]}******{client.username[-1]}")
+        logger.info(f"Starting comments task for {client.username[0]}******{client.username[-1]}")
         try:
             client.comments()
+            logger.info(f"Comments task completed for {client.username[0]}******{client.username[-1]}")
         except Exception as e:
             logger.error(f"Error in comments task for user {username}: {e}", exc_info=True)
 
-        logger.info(f"Space and comments tasks completed sequentially for {client.username[0]}******{client.username[-1]}")
+        logger.info(f"All tasks completed for {client.username[0]}******{client.username[-1]}")
 
         # 在获取最终积分前增加延时
-        logger.info(f"Waiting 1 seconds before fetching final credit for {client.username[0]}******{client.username[-1]}...")
-        time.sleep(1)
+        logger.info(f"Waiting 5 seconds before fetching final credit for {client.username[0]}******{client.username[-1]}...")
+        time.sleep(5)
 
         final_credit = client.credit()
         if final_credit is not None:
